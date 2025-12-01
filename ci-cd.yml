@@ -1,0 +1,91 @@
+name: CI/CD Python App
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - 'feature/*'
+      - 'release/*'
+      - 'hotfix/*'
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          pytest tests
+
+  docker-build-push:
+    needs: build-test
+    runs-on: ubuntu-latest
+
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest
+
+  blue-green-deploy:
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine Target Environment
+        id: env
+        run: |
+          if [ -f current_env ]; then
+            current=$(cat current_env)
+          else
+            current="green"
+          fi
+
+          if [ "$current" = "blue" ]; then
+            target="green"
+          else
+            target="blue"
+          fi
+
+          echo "target=$target" >> $GITHUB_OUTPUT
+
+      - name: Deploy to target environment
+        run: |
+          echo "Desplegando a entorno ${{ steps.env.outputs.target }}"
+          echo "docker run -d -p 5000:5000 --name mi_app_${{ steps.env.outputs.target }} ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest"
+          echo "${{ steps.env.outputs.target }}" > current_env
+
+      - name: Upload new environment state
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-state
+          path: current_env
