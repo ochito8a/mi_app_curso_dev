@@ -5,9 +5,6 @@ on:
     branches:
       - develop
       - main
-      - 'feature/*'
-      - 'release/*'
-      - 'hotfix/*'
   pull_request:
     branches:
       - develop
@@ -17,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: ls
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -34,47 +30,38 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest . || exit 1
-      - run: docker images
-      - run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest || exit 1
+      - run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest .
+      - run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/mi_app:latest
 
-
-blue-green-deploy:
-  needs: docker-build-push
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-
-    # Configura kubeconfig
-    - name: Set up kubeconfig
-      run: |
-        echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > $HOME/.kube/config
-
-    # Determinar el entorno objetivo (blue o green)
-    - name: Determine target environment
-      id: env
-      run: |
-        if [ -f current_env ]; then
-          current=$(cat current_env)
-        else
-          current="green"
-        fi
-        if [ "$current" = "blue" ]; then
-          target="green"
-        else
-          target="blue"
-        fi
-        echo "target=$target" >> $GITHUB_OUTPUT
-
-    # Aplicar deployment y actualizar Service
-    - name: Deploy to Kubernetes
-      run: |
-        kubectl apply -f deployment-${{ steps.env.outputs.target }}.yaml
-        kubectl patch service mi-app-service \
-          -p '{"spec":{"selector":{"app":"magios_blue","version":"'"${{ steps.env.outputs.target }}"'"}}}'
-        echo "${{ steps.env.outputs.target }}" > current_env
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: env-state
-        path: current_env
+  blue-green-deploy:        # <-- Este job va DENTRO de jobs
+    needs: docker-build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up kubeconfig
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 --decode > $HOME/.kube/config
+      - name: Determine target environment
+        id: env
+        run: |
+          if [ -f current_env ]; then
+            current=$(cat current_env)
+          else
+            current="green"
+          fi
+          if [ "$current" = "blue" ]; then
+            target="green"
+          else
+            target="blue"
+          fi
+          echo "target=$target" >> $GITHUB_OUTPUT
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f deployment-${{ steps.env.outputs.target }}.yaml
+          kubectl patch service mi-app-service \
+            -p '{"spec":{"selector":{"app":"magios_blue","version":"'"${{ steps.env.outputs.target }}"'"}}}'
+          echo "${{ steps.env.outputs.target }}" > current_env
+      - uses: actions/upload-artifact@v4
+        with:
+          name: env-state
+          path: current_env
