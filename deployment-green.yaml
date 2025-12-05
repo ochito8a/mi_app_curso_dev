@@ -6,16 +6,16 @@ spec:
   replicas: 2
   selector:
     matchLabels:
-      app: mi-app
+      app: magios_blue
       version: green
   template:
     metadata:
       labels:
-        app: mi-app
+        app: magios_blue
         version: green
     spec:
       containers:
-      - name: mi-app
-        image: ochito/magios-green:1.0
-        ports:
-        - containerPort: 5000
+        - name: mi-app
+          image: ochito/magios-green:1.0
+          ports:
+            - containerPort: 5000
