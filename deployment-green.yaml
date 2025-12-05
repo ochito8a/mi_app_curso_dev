@@ -11,7 +11,7 @@ spec:
   template:
     metadata:
       labels:
-        app: magios_blue
+        app: magios_green
         version: green
     spec:
       containers:
